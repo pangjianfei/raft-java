@@ -2,9 +2,11 @@ package com.github.wenweihu86.raft.example.server;
 
 import com.baidu.brpc.server.RpcServer;
 import com.github.wenweihu86.raft.RaftOptions;
+import com.github.wenweihu86.raft.Server;
 import com.github.wenweihu86.raft.example.server.service.ExampleService;
 import com.github.wenweihu86.raft.RaftNode;
 import com.github.wenweihu86.raft.example.server.service.impl.ExampleServiceImpl;
+import com.github.wenweihu86.raft.proto.Endpoint;
 import com.github.wenweihu86.raft.proto.RaftProto;
 import com.github.wenweihu86.raft.service.RaftClientService;
 import com.github.wenweihu86.raft.service.RaftConsensusService;
@@ -18,6 +20,8 @@ import java.util.List;
  * Created by wenweihu86 on 2017/5/9.
  */
 public class ServerMain {
+
+    //
     public static void main(String[] args) {
         if (args.length != 3) {
             System.out.printf("Usage: ./run_server.sh DATA_PATH CLUSTER CURRENT_NODE\n");
@@ -29,13 +33,13 @@ public class ServerMain {
         // peers, format is "host:port:serverId,host2:port2:serverId2"
         String servers = args[1];
         String[] splitArray = servers.split(",");
-        List<RaftProto.Server> serverList = new ArrayList<>();
+        List<Server> serverList = new ArrayList<>();
         for (String serverString : splitArray) {
-            RaftProto.Server server = parseServer(serverString);
+            Server server = parseServer(serverString);
             serverList.add(server);
         }
         // local server
-        RaftProto.Server localServer = parseServer(args[2]);
+        Server localServer = parseServer(args[2]);
 
         // 初始化RPCServer
         RpcServer server = new RpcServer(localServer.getEndpoint().getPort());
@@ -64,15 +68,20 @@ public class ServerMain {
         raftNode.init();
     }
 
-    private static RaftProto.Server parseServer(String serverString) {
+    /**
+     * 通过ip以及端口解析服务器信息
+     * @param serverString
+     * @return
+     */
+    private static Server parseServer(String serverString) {
         String[] splitServer = serverString.split(":");
         String host = splitServer[0];
         Integer port = Integer.parseInt(splitServer[1]);
         Integer serverId = Integer.parseInt(splitServer[2]);
-        RaftProto.Endpoint endPoint = RaftProto.Endpoint.newBuilder()
+        Endpoint endPoint = Endpoint.newBuilder()
                 .setHost(host).setPort(port).build();
-        RaftProto.Server.Builder serverBuilder = RaftProto.Server.newBuilder();
-        RaftProto.Server server = serverBuilder.setServerId(serverId).setEndpoint(endPoint).build();
+        Server.Builder serverBuilder = Server.newBuilder();
+        Server server = serverBuilder.setServerId(serverId).setEndpoint(endPoint).build();
         return server;
     }
 }

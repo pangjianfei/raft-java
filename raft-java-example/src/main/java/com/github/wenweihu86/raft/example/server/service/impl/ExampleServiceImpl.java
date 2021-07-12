@@ -10,6 +10,7 @@ import com.github.wenweihu86.raft.example.server.service.ExampleProto;
 import com.github.wenweihu86.raft.example.server.service.ExampleService;
 import com.github.wenweihu86.raft.RaftNode;
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.base.EntryType;
 import com.googlecode.protobuf.format.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,7 +72,7 @@ public class ExampleServiceImpl implements ExampleService {
         } else {
             // 数据同步写入raft集群
             byte[] data = request.toByteArray();
-            boolean success = raftNode.replicate(data, RaftProto.EntryType.ENTRY_TYPE_DATA);
+            boolean success = raftNode.replicate(data, EntryType.ENTRY_TYPE_DATA);
             responseBuilder.setSuccess(success);
         }
 
