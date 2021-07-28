@@ -8,28 +8,28 @@ import com.github.wenweihu86.raft.service.RaftConsensusServiceAsync;
 
 /**
  * Created by wenweihu86 on 2017/5/5.
+ * 描述的是集群中其他节点的信息
  */
 public class Peer {
-    private RaftProto.Server server;
+    private Server server;
     private RpcClient rpcClient;
     private RaftConsensusServiceAsync raftConsensusServiceAsync;
-    // 需要发送给follower的下一个日志条目的索引值，只对leader有效
+    // 需要发送给follower的下一个日志条目的索引值，只对leader有效 初始值为领导者最后的日志条目的索引+1
     private long nextIndex;
     // 已复制日志的最高索引值
     private long matchIndex;
+    // 候选人赢得了此张选票时为真
     private volatile Boolean voteGranted;
     private volatile boolean isCatchUp;
 
-    public Peer(RaftProto.Server server) {
+    public Peer(Server server) {
         this.server = server;
-        this.rpcClient = new RpcClient(new Endpoint(
-                server.getEndpoint().getHost(),
-                server.getEndpoint().getPort()));
+        this.rpcClient = new RpcClient(new Endpoint(server.getEndpoint().getHost(), server.getEndpoint().getPort()));
         raftConsensusServiceAsync = BrpcProxy.getProxy(rpcClient, RaftConsensusServiceAsync.class);
         isCatchUp = false;
     }
 
-    public RaftProto.Server getServer() {
+    public Server getServer() {
         return server;
     }
 

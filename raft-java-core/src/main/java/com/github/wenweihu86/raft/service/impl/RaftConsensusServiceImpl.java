@@ -2,6 +2,9 @@ package com.github.wenweihu86.raft.service.impl;
 
 import com.github.wenweihu86.raft.RaftNode;
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.base.EntryType;
+import com.github.wenweihu86.raft.proto.base.ResCode;
+import com.github.wenweihu86.raft.proto.builder.*;
 import com.github.wenweihu86.raft.service.RaftConsensusService;
 import com.github.wenweihu86.raft.util.ConfigurationUtils;
 import com.github.wenweihu86.raft.util.RaftFileUtils;
@@ -18,6 +21,7 @@ import java.util.*;
 
 /**
  * Created by wenweihu86 on 2017/5/2.
+ * raft节点进行Rpc通信的相关操作
  */
 public class RaftConsensusServiceImpl implements RaftConsensusService {
 
@@ -30,19 +34,27 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
         this.raftNode = node;
     }
 
+    /**
+     * 处理PreVote请求
+     * @param request
+     * @return
+     */
     @Override
-    public RaftProto.VoteResponse preVote(RaftProto.VoteRequest request) {
+    public VoteResponse preVote(VoteRequest request) {
         raftNode.getLock().lock();
         try {
-            RaftProto.VoteResponse.Builder responseBuilder = RaftProto.VoteResponse.newBuilder();
+            VoteResponse.Builder responseBuilder = VoteResponse.newBuilder();
             responseBuilder.setGranted(false);
             responseBuilder.setTerm(raftNode.getCurrentTerm());
+            // 如果server列表中不包含发起选举的节点的ip，那么直接返回选举失败的响应
             if (!ConfigurationUtils.containsServer(raftNode.getConfiguration(), request.getServerId())) {
                 return responseBuilder.build();
             }
+            // 如果任期小于当前节点的任期，同样返回选举失败的响应
             if (request.getTerm() < raftNode.getCurrentTerm()) {
                 return responseBuilder.build();
             }
+            // 对于log的信息判断
             boolean isLogOk = request.getLastLogTerm() > raftNode.getLastLogTerm()
                     || (request.getLastLogTerm() == raftNode.getLastLogTerm()
                     && request.getLastLogIndex() >= raftNode.getRaftLog().getLastLogIndex());
@@ -62,11 +74,16 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
         }
     }
 
+    /**
+     * 处理投票请求
+     * @param request
+     * @return
+     */
     @Override
-    public RaftProto.VoteResponse requestVote(RaftProto.VoteRequest request) {
+    public VoteResponse requestVote(VoteRequest request) {
         raftNode.getLock().lock();
         try {
-            RaftProto.VoteResponse.Builder responseBuilder = RaftProto.VoteResponse.newBuilder();
+            VoteResponse.Builder responseBuilder = VoteResponse.newBuilder();
             responseBuilder.setGranted(false);
             responseBuilder.setTerm(raftNode.getCurrentTerm());
             if (!ConfigurationUtils.containsServer(raftNode.getConfiguration(), request.getServerId())) {
@@ -99,13 +116,13 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
     }
 
     @Override
-    public RaftProto.AppendEntriesResponse appendEntries(RaftProto.AppendEntriesRequest request) {
+    public AppendEntriesResponse appendEntries(AppendEntriesRequest request) {
         raftNode.getLock().lock();
         try {
-            RaftProto.AppendEntriesResponse.Builder responseBuilder
-                    = RaftProto.AppendEntriesResponse.newBuilder();
+            AppendEntriesResponse.Builder responseBuilder
+                    = AppendEntriesResponse.newBuilder();
             responseBuilder.setTerm(raftNode.getCurrentTerm());
-            responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_FAIL);
+            responseBuilder.setResCode(ResCode.RES_CODE_FAIL);
             responseBuilder.setLastLogIndex(raftNode.getRaftLog().getLastLogIndex());
             if (request.getTerm() < raftNode.getCurrentTerm()) {
                 return responseBuilder.build();
@@ -122,7 +139,7 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
                                 "at term={} which was occupied by leader={}",
                         request.getServerId(), request.getTerm(), raftNode.getLeaderId());
                 raftNode.stepDown(request.getTerm() + 1);
-                responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_FAIL);
+                responseBuilder.setResCode(ResCode.RES_CODE_FAIL);
                 responseBuilder.setTerm(request.getTerm() + 1);
                 return responseBuilder.build();
             }
@@ -148,17 +165,17 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
             if (request.getEntriesCount() == 0) {
                 LOG.debug("heartbeat request from peer={} at term={}, my term={}",
                         request.getServerId(), request.getTerm(), raftNode.getCurrentTerm());
-                responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_SUCCESS);
+                responseBuilder.setResCode(ResCode.RES_CODE_SUCCESS);
                 responseBuilder.setTerm(raftNode.getCurrentTerm());
                 responseBuilder.setLastLogIndex(raftNode.getRaftLog().getLastLogIndex());
                 advanceCommitIndex(request);
                 return responseBuilder.build();
             }
 
-            responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_SUCCESS);
-            List<RaftProto.LogEntry> entries = new ArrayList<>();
+            responseBuilder.setResCode(ResCode.RES_CODE_SUCCESS);
+            List<LogEntry> entries = new ArrayList<>();
             long index = request.getPrevLogIndex();
-            for (RaftProto.LogEntry entry : request.getEntriesList()) {
+            for (LogEntry entry : request.getEntriesList()) {
                 index++;
                 if (index < raftNode.getRaftLog().getFirstLogIndex()) {
                     continue;
@@ -190,10 +207,10 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
     }
 
     @Override
-    public RaftProto.InstallSnapshotResponse installSnapshot(RaftProto.InstallSnapshotRequest request) {
-        RaftProto.InstallSnapshotResponse.Builder responseBuilder
-                = RaftProto.InstallSnapshotResponse.newBuilder();
-        responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_FAIL);
+    public InstallSnapshotResponse installSnapshot(InstallSnapshotRequest request) {
+        InstallSnapshotResponse.Builder responseBuilder
+                = InstallSnapshotResponse.newBuilder();
+        responseBuilder.setResCode(ResCode.RES_CODE_FAIL);
 
         raftNode.getLock().lock();
         try {
@@ -264,7 +281,7 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
                 }
                 FileUtils.moveDirectory(new File(tmpSnapshotDir), snapshotDirFile);
             }
-            responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_SUCCESS);
+            responseBuilder.setResCode(ResCode.RES_CODE_SUCCESS);
             LOG.info("install snapshot request from server {} " +
                             "in term {} (my term is {}), resCode={}",
                     request.getServerId(), request.getTerm(),
@@ -276,7 +293,7 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
             raftNode.getSnapshot().getLock().unlock();
         }
 
-        if (request.getIsLast() && responseBuilder.getResCode() == RaftProto.ResCode.RES_CODE_SUCCESS) {
+        if (request.getIsLast() && responseBuilder.getResCode() == ResCode.RES_CODE_SUCCESS) {
             // apply state machine
             // TODO: make this async
             String snapshotDataDir = raftNode.getSnapshot().getSnapshotDir() + File.separator + "data";
@@ -309,7 +326,7 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
     }
 
     // in lock, for follower
-    private void advanceCommitIndex(RaftProto.AppendEntriesRequest request) {
+    private void advanceCommitIndex(AppendEntriesRequest request) {
         long newCommitIndex = Math.min(request.getCommitIndex(),
                 request.getPrevLogIndex() + request.getEntriesCount());
         raftNode.setCommitIndex(newCommitIndex);
@@ -318,11 +335,11 @@ public class RaftConsensusServiceImpl implements RaftConsensusService {
             // apply state machine
             for (long index = raftNode.getLastAppliedIndex() + 1;
                  index <= raftNode.getCommitIndex(); index++) {
-                RaftProto.LogEntry entry = raftNode.getRaftLog().getEntry(index);
+                LogEntry entry = raftNode.getRaftLog().getEntry(index);
                 if (entry != null) {
-                    if (entry.getType() == RaftProto.EntryType.ENTRY_TYPE_DATA) {
+                    if (entry.getType() == EntryType.ENTRY_TYPE_DATA) {
                         raftNode.getStateMachine().apply(entry.getData().toByteArray());
-                    } else if (entry.getType() == RaftProto.EntryType.ENTRY_TYPE_CONFIGURATION) {
+                    } else if (entry.getType() == EntryType.ENTRY_TYPE_CONFIGURATION) {
                         raftNode.applyConfiguration(entry);
                     }
                 }

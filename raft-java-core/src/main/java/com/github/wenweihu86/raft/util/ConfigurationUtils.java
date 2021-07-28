@@ -1,5 +1,7 @@
 package com.github.wenweihu86.raft.util;
 
+import com.github.wenweihu86.raft.Configuration;
+import com.github.wenweihu86.raft.Server;
 import com.github.wenweihu86.raft.proto.RaftProto;
 
 import java.util.List;
@@ -10,8 +12,8 @@ import java.util.List;
 public class ConfigurationUtils {
 
     // configuration不会太大，所以这里直接遍历了
-    public static boolean containsServer(RaftProto.Configuration configuration, int serverId) {
-        for (RaftProto.Server server : configuration.getServersList()) {
+    public static boolean containsServer(Configuration configuration, int serverId) {
+        for (Server server : configuration.getServersList()) {
             if (server.getServerId() == serverId) {
                 return true;
             }
@@ -19,12 +21,12 @@ public class ConfigurationUtils {
         return false;
     }
 
-    public static RaftProto.Configuration removeServers(
-            RaftProto.Configuration configuration, List<RaftProto.Server> servers) {
-        RaftProto.Configuration.Builder confBuilder = RaftProto.Configuration.newBuilder();
-        for (RaftProto.Server server : configuration.getServersList()) {
+    public static Configuration removeServers(
+            Configuration configuration, List<Server> servers) {
+        Configuration.Builder confBuilder = Configuration.newBuilder();
+        for (Server server : configuration.getServersList()) {
             boolean toBeRemoved = false;
-            for (RaftProto.Server server1 : servers) {
+            for (Server server1 : servers) {
                 if (server.getServerId() == server1.getServerId()) {
                     toBeRemoved = true;
                     break;
@@ -37,8 +39,8 @@ public class ConfigurationUtils {
         return confBuilder.build();
     }
 
-    public static RaftProto.Server getServer(RaftProto.Configuration configuration, int serverId) {
-        for (RaftProto.Server server : configuration.getServersList()) {
+    public static Server getServer(Configuration configuration, int serverId) {
+        for (Server server : configuration.getServersList()) {
             if (server.getServerId() == serverId) {
                 return server;
             }

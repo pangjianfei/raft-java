@@ -2,6 +2,7 @@ package com.github.wenweihu86.raft.service;
 
 import com.baidu.brpc.client.RpcCallback;
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.builder.*;
 
 import java.util.concurrent.Future;
 
@@ -11,19 +12,19 @@ import java.util.concurrent.Future;
  */
 public interface RaftConsensusServiceAsync extends RaftConsensusService {
 
-    Future<RaftProto.VoteResponse> preVote(
-            RaftProto.VoteRequest request,
-            RpcCallback<RaftProto.VoteResponse> callback);
+    Future<VoteResponse> preVote(
+            VoteRequest request,
+            RpcCallback<VoteResponse> callback);
 
-    Future<RaftProto.VoteResponse> requestVote(
-            RaftProto.VoteRequest request,
-            RpcCallback<RaftProto.VoteResponse> callback);
+    Future<VoteResponse> requestVote(
+            VoteRequest request,
+            RpcCallback<VoteResponse> callback);
 
-    Future<RaftProto.AppendEntriesResponse> appendEntries(
-            RaftProto.AppendEntriesRequest request,
-            RpcCallback<RaftProto.AppendEntriesResponse> callback);
+    Future<AppendEntriesResponse> appendEntries(
+            AppendEntriesRequest request,
+            RpcCallback<AppendEntriesResponse> callback);
 
-    Future<RaftProto.InstallSnapshotResponse> installSnapshot(
-            RaftProto.InstallSnapshotRequest request,
-            RpcCallback<RaftProto.InstallSnapshotResponse> callback);
+    Future<InstallSnapshotResponse> installSnapshot(
+            InstallSnapshotRequest request,
+            RpcCallback<InstallSnapshotResponse> callback);
 }

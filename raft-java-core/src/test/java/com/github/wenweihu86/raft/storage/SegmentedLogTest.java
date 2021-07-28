@@ -1,6 +1,8 @@
 package com.github.wenweihu86.raft.storage;
 
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.base.EntryType;
+import com.github.wenweihu86.raft.proto.builder.LogEntry;
 import com.google.protobuf.ByteString;
 import org.apache.commons.io.FileUtils;
 import org.junit.Assert;
@@ -22,11 +24,11 @@ public class SegmentedLogTest {
         SegmentedLog segmentedLog = new SegmentedLog(raftDataDir, 32);
         Assert.assertTrue(segmentedLog.getFirstLogIndex() == 1);
 
-        List<RaftProto.LogEntry> entries = new ArrayList<>();
+        List<LogEntry> entries = new ArrayList<>();
         for (int i = 1; i < 10; i++) {
-            RaftProto.LogEntry entry = RaftProto.LogEntry.newBuilder()
+            LogEntry entry = LogEntry.newBuilder()
                     .setData(ByteString.copyFrom(("testEntryData" + i).getBytes()))
-                    .setType(RaftProto.EntryType.ENTRY_TYPE_DATA)
+                    .setType(EntryType.ENTRY_TYPE_DATA)
                     .setIndex(i)
                     .setTerm(i)
                     .build();

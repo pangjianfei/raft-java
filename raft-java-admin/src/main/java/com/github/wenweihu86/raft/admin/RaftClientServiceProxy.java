@@ -3,9 +3,14 @@ package com.github.wenweihu86.raft.admin;
 import com.baidu.brpc.client.BrpcProxy;
 import com.baidu.brpc.client.RpcClient;
 import com.baidu.brpc.client.RpcClientOptions;
-import com.baidu.brpc.client.instance.Endpoint;
+import com.github.wenweihu86.raft.Server;
+import com.github.wenweihu86.raft.proto.Endpoint;
+import com.github.wenweihu86.raft.proto.GetConfigurationResponse;
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.base.ResCode;
+import com.github.wenweihu86.raft.proto.builder.*;
 import com.github.wenweihu86.raft.service.RaftClientService;
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.googlecode.protobuf.format.JsonFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,11 +25,11 @@ public class RaftClientServiceProxy implements RaftClientService {
     private static final Logger LOG = LoggerFactory.getLogger(RaftClientServiceProxy.class);
     private static final JsonFormat jsonFormat = new JsonFormat();
 
-    private List<RaftProto.Server> cluster;
+    private List<Server> cluster;
     private RpcClient clusterRPCClient;
     private RaftClientService clusterRaftClientService;
 
-    private RaftProto.Server leader;
+    private Server leader;
     private RpcClient leaderRPCClient;
     private RaftClientService leaderRaftClientService;
 
@@ -41,19 +46,19 @@ public class RaftClientServiceProxy implements RaftClientService {
     }
 
     @Override
-    public RaftProto.GetLeaderResponse getLeader(RaftProto.GetLeaderRequest request) {
+    public GetLeaderResponse getLeader(GetLeaderRequest request) {
         return clusterRaftClientService.getLeader(request);
     }
 
     @Override
-    public RaftProto.GetConfigurationResponse getConfiguration(RaftProto.GetConfigurationRequest request) {
+    public GetConfigurationResponse getConfiguration(GetConfigurationRequest request) {
         return clusterRaftClientService.getConfiguration(request);
     }
 
     @Override
-    public RaftProto.AddPeersResponse addPeers(RaftProto.AddPeersRequest request) {
-        RaftProto.AddPeersResponse response = leaderRaftClientService.addPeers(request);
-        if (response != null && response.getResCode() == RaftProto.ResCode.RES_CODE_NOT_LEADER) {
+    public AddPeersResponse addPeers(AddPeersRequest request) {
+        AddPeersResponse response = leaderRaftClientService.addPeers(request);
+        if (response != null && response.getResCode() == ResCode.RES_CODE_NOT_LEADER) {
             updateConfiguration();
             response = leaderRaftClientService.addPeers(request);
         }
@@ -61,9 +66,9 @@ public class RaftClientServiceProxy implements RaftClientService {
     }
 
     @Override
-    public RaftProto.RemovePeersResponse removePeers(RaftProto.RemovePeersRequest request) {
-        RaftProto.RemovePeersResponse response = leaderRaftClientService.removePeers(request);
-        if (response != null && response.getResCode() == RaftProto.ResCode.RES_CODE_NOT_LEADER) {
+    public RemovePeersResponse removePeers(RemovePeersRequest request) {
+        RemovePeersResponse response = leaderRaftClientService.removePeers(request);
+        if (response != null && response.getResCode() == ResCode.RES_CODE_NOT_LEADER) {
             updateConfiguration();
             response = leaderRaftClientService.removePeers(request);
         }
@@ -80,9 +85,9 @@ public class RaftClientServiceProxy implements RaftClientService {
     }
 
     private boolean updateConfiguration() {
-        RaftProto.GetConfigurationRequest request = RaftProto.GetConfigurationRequest.newBuilder().build();
-        RaftProto.GetConfigurationResponse response = clusterRaftClientService.getConfiguration(request);
-        if (response != null && response.getResCode() == RaftProto.ResCode.RES_CODE_SUCCESS) {
+        GetConfigurationRequest request = GetConfigurationRequest.newBuilder().build();
+        GetConfigurationResponse response = clusterRaftClientService.getConfiguration(request);
+        if (response != null && response.getResCode() == ResCode.RES_CODE_SUCCESS) {
             if (leaderRPCClient != null) {
                 leaderRPCClient.stop();
             }
@@ -94,8 +99,8 @@ public class RaftClientServiceProxy implements RaftClientService {
         return false;
     }
 
-    private Endpoint convertEndPoint(RaftProto.Endpoint endPoint) {
-        return new Endpoint(endPoint.getHost(), endPoint.getPort());
+    private com.baidu.brpc.client.instance.Endpoint convertEndPoint(Endpoint endPoint) {
+        return new com.baidu.brpc.client.instance.Endpoint(endPoint.getHost(), endPoint.getPort());
     }
 
 }

@@ -1,6 +1,7 @@
 package com.github.wenweihu86.raft.storage;
 
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.builder.LogEntry;
 
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
@@ -13,8 +14,8 @@ public class Segment {
 
     public static class Record {
         public long offset;
-        public RaftProto.LogEntry entry;
-        public Record(long offset, RaftProto.LogEntry entry) {
+        public LogEntry entry;
+        public Record(long offset, LogEntry entry) {
             this.offset = offset;
             this.entry = entry;
         }
@@ -28,7 +29,7 @@ public class Segment {
     private RandomAccessFile randomAccessFile;
     private List<Record> entries = new ArrayList<>();
 
-    public RaftProto.LogEntry getEntry(long index) {
+    public LogEntry getEntry(long index) {
         if (startIndex == 0 || endIndex == 0) {
             return null;
         }

@@ -1,7 +1,9 @@
 package com.github.wenweihu86.raft.service;
 
 import com.baidu.brpc.client.RpcCallback;
+import com.github.wenweihu86.raft.proto.GetConfigurationResponse;
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.builder.*;
 
 import java.util.concurrent.Future;
 
@@ -11,19 +13,19 @@ import java.util.concurrent.Future;
  */
 public interface RaftClientServiceAsync extends RaftClientService {
 
-    Future<RaftProto.GetLeaderResponse> getLeader(
-            RaftProto.GetLeaderRequest request,
-            RpcCallback<RaftProto.GetLeaderResponse> callback);
+    Future<GetLeaderResponse> getLeader(
+            GetLeaderRequest request,
+            RpcCallback<GetLeaderResponse> callback);
 
-    Future<RaftProto.GetConfigurationResponse> getConfiguration(
-            RaftProto.GetConfigurationRequest request,
-            RpcCallback<RaftProto.GetConfigurationResponse> callback);
+    Future<GetConfigurationResponse> getConfiguration(
+            GetConfigurationRequest request,
+            RpcCallback<GetConfigurationResponse> callback);
 
-    Future<RaftProto.AddPeersResponse> addPeers(
-            RaftProto.AddPeersRequest request,
-            RpcCallback<RaftProto.AddPeersResponse> callback);
+    Future<AddPeersResponse> addPeers(
+            AddPeersRequest request,
+            RpcCallback<AddPeersResponse> callback);
 
-    Future<RaftProto.RemovePeersResponse> removePeers(
-            RaftProto.RemovePeersRequest request,
-            RpcCallback<RaftProto.RemovePeersResponse> callback);
+    Future<RemovePeersResponse> removePeers(
+            RemovePeersRequest request,
+            RpcCallback<RemovePeersResponse> callback);
 }

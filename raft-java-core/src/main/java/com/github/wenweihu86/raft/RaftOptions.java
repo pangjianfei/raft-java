@@ -1,6 +1,6 @@
 package com.github.wenweihu86.raft;
 
-import lombok.Getter;
+import  lombok.Getter;
 import lombok.Setter;
 
 /**

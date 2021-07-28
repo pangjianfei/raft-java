@@ -1,8 +1,15 @@
 package com.github.wenweihu86.raft.service.impl;
 
+import com.github.wenweihu86.raft.Configuration;
 import com.github.wenweihu86.raft.Peer;
 import com.github.wenweihu86.raft.RaftNode;
+import com.github.wenweihu86.raft.Server;
+import com.github.wenweihu86.raft.proto.Endpoint;
+import com.github.wenweihu86.raft.proto.GetConfigurationResponse;
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.base.EntryType;
+import com.github.wenweihu86.raft.proto.base.ResCode;
+import com.github.wenweihu86.raft.proto.builder.*;
 import com.github.wenweihu86.raft.service.RaftClientService;
 import com.github.wenweihu86.raft.util.ConfigurationUtils;
 import com.googlecode.protobuf.format.JsonFormat;
@@ -26,22 +33,22 @@ public class RaftClientServiceImpl implements RaftClientService {
     }
 
     @Override
-    public RaftProto.GetLeaderResponse getLeader(RaftProto.GetLeaderRequest request) {
+    public GetLeaderResponse getLeader(GetLeaderRequest request) {
         LOG.info("receive getLeader request");
-        RaftProto.GetLeaderResponse.Builder responseBuilder = RaftProto.GetLeaderResponse.newBuilder();
-        responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_SUCCESS);
-        RaftProto.Endpoint.Builder endPointBuilder = RaftProto.Endpoint.newBuilder();
+        GetLeaderResponse.Builder responseBuilder = GetLeaderResponse.newBuilder();
+        responseBuilder.setResCode(ResCode.RES_CODE_SUCCESS);
+        Endpoint.Builder endPointBuilder = Endpoint.newBuilder();
         raftNode.getLock().lock();
         try {
             int leaderId = raftNode.getLeaderId();
             if (leaderId == 0) {
-                responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_FAIL);
+                responseBuilder.setResCode(ResCode.RES_CODE_FAIL);
             } else if (leaderId == raftNode.getLocalServer().getServerId()) {
                 endPointBuilder.setHost(raftNode.getLocalServer().getEndpoint().getHost());
                 endPointBuilder.setPort(raftNode.getLocalServer().getEndpoint().getPort());
             } else {
-                RaftProto.Configuration configuration = raftNode.getConfiguration();
-                for (RaftProto.Server server : configuration.getServersList()) {
+                Configuration configuration = raftNode.getConfiguration();
+                for (Server server : configuration.getServersList()) {
                     if (server.getServerId() == leaderId) {
                         endPointBuilder.setHost(server.getEndpoint().getHost());
                         endPointBuilder.setPort(server.getEndpoint().getPort());
@@ -53,26 +60,26 @@ public class RaftClientServiceImpl implements RaftClientService {
             raftNode.getLock().unlock();
         }
         responseBuilder.setLeader(endPointBuilder.build());
-        RaftProto.GetLeaderResponse response = responseBuilder.build();
+        GetLeaderResponse response = responseBuilder.build();
         LOG.info("getLeader response={}", jsonFormat.printToString(response));
         return responseBuilder.build();
     }
 
     @Override
-    public RaftProto.GetConfigurationResponse getConfiguration(RaftProto.GetConfigurationRequest request) {
-        RaftProto.GetConfigurationResponse.Builder responseBuilder
-                = RaftProto.GetConfigurationResponse.newBuilder();
-        responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_SUCCESS);
+    public GetConfigurationResponse getConfiguration(GetConfigurationRequest request) {
+        GetConfigurationResponse.Builder responseBuilder
+                = GetConfigurationResponse.newBuilder();
+        responseBuilder.setResCode(ResCode.RES_CODE_SUCCESS);
         raftNode.getLock().lock();
         try {
-            RaftProto.Configuration configuration = raftNode.getConfiguration();
-            RaftProto.Server leader = ConfigurationUtils.getServer(configuration, raftNode.getLeaderId());
+            Configuration configuration = raftNode.getConfiguration();
+            Server leader = ConfigurationUtils.getServer(configuration, raftNode.getLeaderId());
             responseBuilder.setLeader(leader);
             responseBuilder.addAllServers(configuration.getServersList());
         } finally {
             raftNode.getLock().unlock();
         }
-        RaftProto.GetConfigurationResponse response = responseBuilder.build();
+        GetConfigurationResponse response = responseBuilder.build();
         LOG.info("getConfiguration request={} response={}",
                 jsonFormat.printToString(request), jsonFormat.printToString(response));
 
@@ -80,16 +87,16 @@ public class RaftClientServiceImpl implements RaftClientService {
     }
 
     @Override
-    public RaftProto.AddPeersResponse addPeers(RaftProto.AddPeersRequest request) {
-        RaftProto.AddPeersResponse.Builder responseBuilder = RaftProto.AddPeersResponse.newBuilder();
-        responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_FAIL);
+    public AddPeersResponse addPeers(AddPeersRequest request) {
+        AddPeersResponse.Builder responseBuilder = AddPeersResponse.newBuilder();
+        responseBuilder.setResCode(ResCode.RES_CODE_FAIL);
         if (request.getServersCount() == 0
                 || request.getServersCount() % 2 != 0) {
             LOG.warn("added server's size can only multiple of 2");
             responseBuilder.setResMsg("added server's size can only multiple of 2");
             return responseBuilder.build();
         }
-        for (RaftProto.Server server : request.getServersList()) {
+        for (Server server : request.getServersList()) {
             if (raftNode.getPeerMap().containsKey(server.getServerId())) {
                 LOG.warn("already be added/adding to configuration");
                 responseBuilder.setResMsg("already be added/adding to configuration");
@@ -97,7 +104,7 @@ public class RaftClientServiceImpl implements RaftClientService {
             }
         }
         List<Peer> requestPeers = new ArrayList<>(request.getServersCount());
-        for (RaftProto.Server server : request.getServersList()) {
+        for (Server server : request.getServersList()) {
             final Peer peer = new Peer(server);
             peer.setNextIndex(1);
             requestPeers.add(peer);
@@ -136,20 +143,20 @@ public class RaftClientServiceImpl implements RaftClientService {
         if (catchUpNum == requestPeers.size()) {
             raftNode.getLock().lock();
             byte[] configurationData;
-            RaftProto.Configuration newConfiguration;
+            Configuration newConfiguration;
             try {
-                newConfiguration = RaftProto.Configuration.newBuilder(raftNode.getConfiguration())
+                newConfiguration = Configuration.newBuilder(raftNode.getConfiguration())
                         .addAllServers(request.getServersList()).build();
                 configurationData = newConfiguration.toByteArray();
             } finally {
                 raftNode.getLock().unlock();
             }
-            boolean success = raftNode.replicate(configurationData, RaftProto.EntryType.ENTRY_TYPE_CONFIGURATION);
+            boolean success = raftNode.replicate(configurationData, EntryType.ENTRY_TYPE_CONFIGURATION);
             if (success) {
-                responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_SUCCESS);
+                responseBuilder.setResCode(ResCode.RES_CODE_SUCCESS);
             }
         }
-        if (responseBuilder.getResCode() != RaftProto.ResCode.RES_CODE_SUCCESS) {
+        if (responseBuilder.getResCode() != ResCode.RES_CODE_SUCCESS) {
             raftNode.getLock().lock();
             try {
                 for (Peer peer : requestPeers) {
@@ -161,7 +168,7 @@ public class RaftClientServiceImpl implements RaftClientService {
             }
         }
 
-        RaftProto.AddPeersResponse response = responseBuilder.build();
+        AddPeersResponse response = responseBuilder.build();
         LOG.info("addPeers request={} resCode={}",
                 jsonFormat.printToString(request), response.getResCode());
 
@@ -169,9 +176,9 @@ public class RaftClientServiceImpl implements RaftClientService {
     }
 
     @Override
-    public RaftProto.RemovePeersResponse removePeers(RaftProto.RemovePeersRequest request) {
-        RaftProto.RemovePeersResponse.Builder responseBuilder = RaftProto.RemovePeersResponse.newBuilder();
-        responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_FAIL);
+    public RemovePeersResponse removePeers(RemovePeersRequest request) {
+        RemovePeersResponse.Builder responseBuilder = RemovePeersResponse.newBuilder();
+        responseBuilder.setResCode(ResCode.RES_CODE_FAIL);
 
         if (request.getServersCount() == 0
                 || request.getServersCount() % 2 != 0) {
@@ -183,7 +190,7 @@ public class RaftClientServiceImpl implements RaftClientService {
         // check request peers exist
         raftNode.getLock().lock();
         try {
-            for (RaftProto.Server server : request.getServersList()) {
+            for (Server server : request.getServersList()) {
                 if (!ConfigurationUtils.containsServer(raftNode.getConfiguration(), server.getServerId())) {
                     return responseBuilder.build();
                 }
@@ -193,7 +200,7 @@ public class RaftClientServiceImpl implements RaftClientService {
         }
 
         raftNode.getLock().lock();
-        RaftProto.Configuration newConfiguration;
+        Configuration newConfiguration;
         byte[] configurationData;
         try {
             newConfiguration = ConfigurationUtils.removeServers(
@@ -203,9 +210,9 @@ public class RaftClientServiceImpl implements RaftClientService {
         } finally {
             raftNode.getLock().unlock();
         }
-        boolean success = raftNode.replicate(configurationData, RaftProto.EntryType.ENTRY_TYPE_CONFIGURATION);
+        boolean success = raftNode.replicate(configurationData, EntryType.ENTRY_TYPE_CONFIGURATION);
         if (success) {
-            responseBuilder.setResCode(RaftProto.ResCode.RES_CODE_SUCCESS);
+            responseBuilder.setResCode(ResCode.RES_CODE_SUCCESS);
         }
 
         LOG.info("removePeers request={} resCode={}",

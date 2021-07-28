@@ -1,6 +1,10 @@
 package com.github.wenweihu86.raft.admin;
 
+import com.github.wenweihu86.raft.Server;
+import com.github.wenweihu86.raft.proto.Endpoint;
+import com.github.wenweihu86.raft.proto.GetConfigurationResponse;
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.builder.*;
 import com.github.wenweihu86.raft.service.RaftClientService;
 import com.googlecode.protobuf.format.JsonFormat;
 import org.apache.commons.lang3.Validate;
@@ -30,8 +34,8 @@ public class AdminMain {
                 || subCmd.equals("del"));
         RaftClientService client = new RaftClientServiceProxy(servers);
         if (subCmd.equals("get")) {
-            RaftProto.GetConfigurationRequest request = RaftProto.GetConfigurationRequest.newBuilder().build();
-            RaftProto.GetConfigurationResponse response = client.getConfiguration(request);
+            GetConfigurationRequest request = GetConfigurationRequest.newBuilder().build();
+            GetConfigurationResponse response = client.getConfiguration(request);
             if (response != null) {
                 System.out.println(jsonFormat.printToString(response));
             } else {
@@ -39,20 +43,20 @@ public class AdminMain {
             }
 
         } else if (subCmd.equals("add")) {
-            List<RaftProto.Server> serverList = parseServers(args[3]);
-            RaftProto.AddPeersRequest request = RaftProto.AddPeersRequest.newBuilder()
+            List<Server> serverList = parseServers(args[3]);
+            AddPeersRequest request = AddPeersRequest.newBuilder()
                     .addAllServers(serverList).build();
-            RaftProto.AddPeersResponse response = client.addPeers(request);
+            AddPeersResponse response = client.addPeers(request);
             if (response != null) {
                 System.out.println(response.getResCode());
             } else {
                 System.out.printf("response == null");
             }
         } else if (subCmd.equals("del")) {
-            List<RaftProto.Server> serverList = parseServers(args[3]);
-            RaftProto.RemovePeersRequest request = RaftProto.RemovePeersRequest.newBuilder()
+            List<Server> serverList = parseServers(args[3]);
+            RemovePeersRequest request = RemovePeersRequest.newBuilder()
                     .addAllServers(serverList).build();
-            RaftProto.RemovePeersResponse response = client.removePeers(request);
+            RemovePeersResponse response = client.removePeers(request);
             if (response != null) {
                 System.out.println(response.getResCode());
             } else {
@@ -62,15 +66,15 @@ public class AdminMain {
         ((RaftClientServiceProxy) client).stop();
     }
 
-    public static List<RaftProto.Server> parseServers(String serversString) {
-        List<RaftProto.Server> serverList = new ArrayList<>();
+    public static List<Server> parseServers(String serversString) {
+        List<Server> serverList = new ArrayList<>();
         String[] splitArray1 = serversString.split(",");
         for (String addr : splitArray1) {
             String[] splitArray2 = addr.split(":");
-            RaftProto.Endpoint endPoint = RaftProto.Endpoint.newBuilder()
+            Endpoint endPoint = Endpoint.newBuilder()
                     .setHost(splitArray2[0])
                     .setPort(Integer.parseInt(splitArray2[1])).build();
-            RaftProto.Server server = RaftProto.Server.newBuilder()
+            Server server = Server.newBuilder()
                     .setEndpoint(endPoint)
                     .setServerId(Integer.parseInt(splitArray2[2])).build();
             serverList.add(server);

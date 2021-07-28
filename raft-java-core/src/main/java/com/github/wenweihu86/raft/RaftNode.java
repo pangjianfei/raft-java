@@ -2,6 +2,9 @@ package com.github.wenweihu86.raft;
 
 import com.baidu.brpc.client.RpcCallback;
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.base.EntryType;
+import com.github.wenweihu86.raft.proto.base.ResCode;
+import com.github.wenweihu86.raft.proto.builder.*;
 import com.github.wenweihu86.raft.storage.SegmentedLog;
 import com.github.wenweihu86.raft.util.ConfigurationUtils;
 import com.google.protobuf.ByteString;
@@ -28,20 +31,29 @@ import java.util.concurrent.locks.*;
  */
 public class RaftNode {
 
+    /**
+     * 定义节点的状态
+     * RaftNode中节点的状态转化条件为：
+     * follower -> candidate : 心跳超时，发起选举
+     * candidate -> candidate : 选举超时， 重新发起选举
+     * candidate -> follower : 收到更高任期的Leader的通信请求
+     * candidate -> leader : 选举中获取了大多数节点的选票
+     * leader -> follower : 遇到更高任期 Term 的 candidate 的通信请求
+     */
     public enum NodeState {
-        STATE_FOLLOWER,
-        STATE_PRE_CANDIDATE,
-        STATE_CANDIDATE,
-        STATE_LEADER
+        STATE_FOLLOWER, // follower 状态
+        STATE_PRE_CANDIDATE, // Follower节点在竞选Leader时拥有的临时身份
+        STATE_CANDIDATE, //
+        STATE_LEADER // leader
     }
 
     private static final Logger LOG = LoggerFactory.getLogger(RaftNode.class);
     private static final JsonFormat jsonFormat = new JsonFormat();
 
     private RaftOptions raftOptions;
-    private RaftProto.Configuration configuration;
+    private Configuration configuration;
     private ConcurrentMap<Integer, Peer> peerMap = new ConcurrentHashMap<>();
-    private RaftProto.Server localServer;
+    private Server localServer;
     private StateMachine stateMachine;
     private SegmentedLog raftLog;
     private Snapshot snapshot;
@@ -67,12 +79,12 @@ public class RaftNode {
     private ScheduledFuture heartbeatScheduledFuture;
 
     public RaftNode(RaftOptions raftOptions,
-                    List<RaftProto.Server> servers,
-                    RaftProto.Server localServer,
+                    List<Server> servers,
+                    Server localServer,
                     StateMachine stateMachine) {
         this.raftOptions = raftOptions;
-        RaftProto.Configuration.Builder confBuilder = RaftProto.Configuration.newBuilder();
-        for (RaftProto.Server server : servers) {
+        Configuration.Builder confBuilder = Configuration.newBuilder();
+        for (Server server : servers) {
             confBuilder.addServers(server);
         }
         configuration = confBuilder.build();
@@ -94,7 +106,7 @@ public class RaftNode {
             raftLog.truncatePrefix(snapshot.getMetaData().getLastIncludedIndex() + 1);
         }
         // apply state machine
-        RaftProto.Configuration snapshotConfiguration = snapshot.getMetaData().getConfiguration();
+        Configuration snapshotConfiguration = snapshot.getMetaData().getConfiguration();
         if (snapshotConfiguration.getServersCount() > 0) {
             configuration = snapshotConfiguration;
         }
@@ -102,10 +114,10 @@ public class RaftNode {
         stateMachine.readSnapshot(snapshotDataDir);
         for (long index = snapshot.getMetaData().getLastIncludedIndex() + 1;
              index <= commitIndex; index++) {
-            RaftProto.LogEntry entry = raftLog.getEntry(index);
-            if (entry.getType() == RaftProto.EntryType.ENTRY_TYPE_DATA) {
+            LogEntry entry = raftLog.getEntry(index);
+            if (entry.getType() == EntryType.ENTRY_TYPE_DATA) {
                 stateMachine.apply(entry.getData().toByteArray());
-            } else if (entry.getType() == RaftProto.EntryType.ENTRY_TYPE_CONFIGURATION) {
+            } else if (entry.getType() == EntryType.ENTRY_TYPE_CONFIGURATION) {
                 applyConfiguration(entry);
             }
         }
@@ -113,9 +125,8 @@ public class RaftNode {
     }
 
     public void init() {
-        for (RaftProto.Server server : configuration.getServersList()) {
-            if (!peerMap.containsKey(server.getServerId())
-                    && server.getServerId() != localServer.getServerId()) {
+        for (Server server : configuration.getServersList()) {
+            if (!peerMap.containsKey(server.getServerId()) && server.getServerId() != localServer.getServerId()) {
                 Peer peer = new Peer(server);
                 peer.setNextIndex(raftLog.getLastLogIndex() + 1);
                 peerMap.put(server.getServerId(), peer);
@@ -130,6 +141,7 @@ public class RaftNode {
                 TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>());
         scheduledExecutorService = Executors.newScheduledThreadPool(2);
+        // 启动定时调度器，执行定时生成snapshot
         scheduledExecutorService.scheduleWithFixedDelay(new Runnable() {
             @Override
             public void run() {
@@ -141,7 +153,7 @@ public class RaftNode {
     }
 
     // client set command
-    public boolean replicate(byte[] data, RaftProto.EntryType entryType) {
+    public boolean replicate(byte[] data, EntryType entryType) {
         lock.lock();
         long newLastLogIndex = 0;
         try {
@@ -149,16 +161,16 @@ public class RaftNode {
                 LOG.debug("I'm not the leader");
                 return false;
             }
-            RaftProto.LogEntry logEntry = RaftProto.LogEntry.newBuilder()
+            LogEntry logEntry = LogEntry.newBuilder()
                     .setTerm(currentTerm)
                     .setType(entryType)
                     .setData(ByteString.copyFrom(data)).build();
-            List<RaftProto.LogEntry> entries = new ArrayList<>();
+            List<LogEntry> entries = new ArrayList<>();
             entries.add(logEntry);
             newLastLogIndex = raftLog.append(entries);
 //            raftLog.updateMetaData(currentTerm, null, raftLog.getFirstLogIndex());
 
-            for (RaftProto.Server server : configuration.getServersList()) {
+            for (Server server : configuration.getServersList()) {
                 final Peer peer = peerMap.get(server.getServerId());
                 executorService.submit(new Runnable() {
                     @Override
@@ -194,7 +206,7 @@ public class RaftNode {
     }
 
     public void appendEntries(Peer peer) {
-        RaftProto.AppendEntriesRequest.Builder requestBuilder = RaftProto.AppendEntriesRequest.newBuilder();
+        AppendEntriesRequest.Builder requestBuilder = AppendEntriesRequest.newBuilder();
         long prevLogIndex;
         long numEntries;
 
@@ -249,8 +261,8 @@ public class RaftNode {
             lock.unlock();
         }
 
-        RaftProto.AppendEntriesRequest request = requestBuilder.build();
-        RaftProto.AppendEntriesResponse response = peer.getRaftConsensusServiceAsync().appendEntries(request);
+        AppendEntriesRequest request = requestBuilder.build();
+        AppendEntriesResponse response = peer.getRaftConsensusServiceAsync().appendEntries(request);
 
         lock.lock();
         try {
@@ -272,7 +284,7 @@ public class RaftNode {
             if (response.getTerm() > currentTerm) {
                 stepDown(response.getTerm());
             } else {
-                if (response.getResCode() == RaftProto.ResCode.RES_CODE_SUCCESS) {
+                if (response.getResCode() == ResCode.RES_CODE_SUCCESS) {
                     peer.setMatchIndex(prevLogIndex + numEntries);
                     peer.setNextIndex(peer.getMatchIndex() + 1);
                     if (ConfigurationUtils.containsServer(configuration, peer.getServer().getServerId())) {
@@ -324,7 +336,7 @@ public class RaftNode {
         try {
             long localLastAppliedIndex;
             long lastAppliedTerm = 0;
-            RaftProto.Configuration.Builder localConfiguration = RaftProto.Configuration.newBuilder();
+            Configuration.Builder localConfiguration = Configuration.newBuilder();
             lock.lock();
             try {
                 if (raftLog.getTotalSize() < raftOptions.getSnapshotMinLogSize()) {
@@ -397,13 +409,13 @@ public class RaftNode {
     }
 
     // in lock
-    public void applyConfiguration(RaftProto.LogEntry entry) {
+    public void applyConfiguration(LogEntry entry) {
         try {
-            RaftProto.Configuration newConfiguration
-                    = RaftProto.Configuration.parseFrom(entry.getData().toByteArray());
+            Configuration newConfiguration
+                    = Configuration.parseFrom(entry.getData().toByteArray());
             configuration = newConfiguration;
             // update peerMap
-            for (RaftProto.Server server : newConfiguration.getServersList()) {
+            for (Server server : newConfiguration.getServersList()) {
                 if (!peerMap.containsKey(server.getServerId())
                         && server.getServerId() != localServer.getServerId()) {
                     Peer peer = new Peer(server);
@@ -434,6 +446,7 @@ public class RaftNode {
         if (electionScheduledFuture != null && !electionScheduledFuture.isDone()) {
             electionScheduledFuture.cancel(true);
         }
+        // 创建定时调度器，getElectionTimeoutMs() 保证定时的时间是不同的
         electionScheduledFuture = scheduledExecutorService.schedule(new Runnable() {
             @Override
             public void run() {
@@ -464,19 +477,22 @@ public class RaftNode {
                 return;
             }
             LOG.info("Running pre-vote in term {}", currentTerm);
+            // 状态变更
             state = NodeState.STATE_PRE_CANDIDATE;
         } finally {
             lock.unlock();
         }
 
-        for (RaftProto.Server server : configuration.getServersList()) {
+        for (Server server : configuration.getServersList()) {
             if (server.getServerId() == localServer.getServerId()) {
                 continue;
             }
+            // 拿到集群的其他节点信息
             final Peer peer = peerMap.get(server.getServerId());
             executorService.submit(new Runnable() {
                 @Override
                 public void run() {
+                    // 发送preVote请求
                     preVote(peer);
                 }
             });
@@ -503,7 +519,7 @@ public class RaftNode {
             lock.unlock();
         }
 
-        for (RaftProto.Server server : configuration.getServersList()) {
+        for (Server server : configuration.getServersList()) {
             if (server.getServerId() == localServer.getServerId()) {
                 continue;
             }
@@ -523,7 +539,7 @@ public class RaftNode {
      */
     private void preVote(Peer peer) {
         LOG.info("begin pre vote request");
-        RaftProto.VoteRequest.Builder requestBuilder = RaftProto.VoteRequest.newBuilder();
+        VoteRequest.Builder requestBuilder = VoteRequest.newBuilder();
         lock.lock();
         try {
             peer.setVoteGranted(null);
@@ -535,7 +551,8 @@ public class RaftNode {
             lock.unlock();
         }
 
-        RaftProto.VoteRequest request = requestBuilder.build();
+        VoteRequest request = requestBuilder.build();
+        // 发起preVote请求
         peer.getRaftConsensusServiceAsync().preVote(
                 request, new PreVoteResponseCallback(peer, request));
     }
@@ -546,7 +563,7 @@ public class RaftNode {
      */
     private void requestVote(Peer peer) {
         LOG.info("begin vote request");
-        RaftProto.VoteRequest.Builder requestBuilder = RaftProto.VoteRequest.newBuilder();
+        VoteRequest.Builder requestBuilder = VoteRequest.newBuilder();
         lock.lock();
         try {
             peer.setVoteGranted(null);
@@ -558,54 +575,65 @@ public class RaftNode {
             lock.unlock();
         }
 
-        RaftProto.VoteRequest request = requestBuilder.build();
+        VoteRequest request = requestBuilder.build();
         peer.getRaftConsensusServiceAsync().requestVote(
                 request, new VoteResponseCallback(peer, request));
     }
 
-    private class PreVoteResponseCallback implements RpcCallback<RaftProto.VoteResponse> {
+    /**
+     * preVote请求成功响应后发起的回掉
+     */
+    private class PreVoteResponseCallback implements RpcCallback<VoteResponse> {
         private Peer peer;
-        private RaftProto.VoteRequest request;
+        private VoteRequest request;
 
-        public PreVoteResponseCallback(Peer peer, RaftProto.VoteRequest request) {
+        public PreVoteResponseCallback(Peer peer, VoteRequest request) {
             this.peer = peer;
             this.request = request;
         }
 
         @Override
-        public void success(RaftProto.VoteResponse response) {
+        public void success(VoteResponse response) {
             lock.lock();
             try {
+                // 获取投票的结果
                 peer.setVoteGranted(response.getGranted());
+                // 验证任期和状态
                 if (currentTerm != request.getTerm() || state != NodeState.STATE_PRE_CANDIDATE) {
                     LOG.info("ignore preVote RPC result");
                     return;
                 }
+                // 如果响应的任期 > 发起投票的节点的任期
                 if (response.getTerm() > currentTerm) {
                     LOG.info("Received pre vote response from server {} " +
                                     "in term {} (this server's term was {})",
                             peer.getServer().getServerId(),
                             response.getTerm(),
                             currentTerm);
+                    // 放弃Leader选举操作，更新任期为最新的任期，同时调整节点状态，停止向其他节点发送心跳 重置选举定时器
                     stepDown(response.getTerm());
                 } else {
+                    // 候选人赢得了选票
                     if (response.getGranted()) {
                         LOG.info("get pre vote granted from server {} for term {}",
                                 peer.getServer().getServerId(), currentTerm);
                         int voteGrantedNum = 1;
-                        for (RaftProto.Server server : configuration.getServersList()) {
+                        for (Server server : configuration.getServersList()) {
                             if (server.getServerId() == localServer.getServerId()) {
                                 continue;
                             }
                             Peer peer1 = peerMap.get(server.getServerId());
+                            // 更新获取到的票数
                             if (peer1.isVoteGranted() != null && peer1.isVoteGranted() == true) {
                                 voteGrantedNum += 1;
                             }
                         }
                         LOG.info("preVoteGrantedNum={}", voteGrantedNum);
+                        // 获取到的票数超过所有节点的一半的数量的时候
                         if (voteGrantedNum > configuration.getServersCount() / 2) {
                             LOG.info("get majority pre vote, serverId={} when pre vote, start vote",
                                     localServer.getServerId());
+                            // 开启投票， 两阶段的第二阶段
                             startVote();
                         }
                     } else {
@@ -627,17 +655,17 @@ public class RaftNode {
         }
     }
 
-    private class VoteResponseCallback implements RpcCallback<RaftProto.VoteResponse> {
+    private class VoteResponseCallback implements RpcCallback<VoteResponse> {
         private Peer peer;
-        private RaftProto.VoteRequest request;
+        private VoteRequest request;
 
-        public VoteResponseCallback(Peer peer, RaftProto.VoteRequest request) {
+        public VoteResponseCallback(Peer peer, VoteRequest request) {
             this.peer = peer;
             this.request = request;
         }
 
         @Override
-        public void success(RaftProto.VoteResponse response) {
+        public void success(VoteResponse response) {
             lock.lock();
             try {
                 peer.setVoteGranted(response.getGranted());
@@ -660,7 +688,7 @@ public class RaftNode {
                         if (votedFor == localServer.getServerId()) {
                             voteGrantedNum += 1;
                         }
-                        for (RaftProto.Server server : configuration.getServersList()) {
+                        for (Server server : configuration.getServersList()) {
                             if (server.getServerId() == localServer.getServerId()) {
                                 continue;
                             }
@@ -739,7 +767,7 @@ public class RaftNode {
         int peerNum = configuration.getServersList().size();
         long[] matchIndexes = new long[peerNum];
         int i = 0;
-        for (RaftProto.Server server : configuration.getServersList()) {
+        for (Server server : configuration.getServersList()) {
             if (server.getServerId() != localServer.getServerId()) {
                 Peer peer = peerMap.get(server.getServerId());
                 matchIndexes[i++] = peer.getMatchIndex();
@@ -763,10 +791,10 @@ public class RaftNode {
         raftLog.updateMetaData(currentTerm, null, raftLog.getFirstLogIndex(), commitIndex);
         // 同步到状态机
         for (long index = oldCommitIndex + 1; index <= newCommitIndex; index++) {
-            RaftProto.LogEntry entry = raftLog.getEntry(index);
-            if (entry.getType() == RaftProto.EntryType.ENTRY_TYPE_DATA) {
+            LogEntry entry = raftLog.getEntry(index);
+            if (entry.getType() == EntryType.ENTRY_TYPE_DATA) {
                 stateMachine.apply(entry.getData().toByteArray());
-            } else if (entry.getType() == RaftProto.EntryType.ENTRY_TYPE_CONFIGURATION) {
+            } else if (entry.getType() == EntryType.ENTRY_TYPE_CONFIGURATION) {
                 applyConfiguration(entry);
             }
         }
@@ -776,11 +804,11 @@ public class RaftNode {
     }
 
     // in lock
-    private long packEntries(long nextIndex, RaftProto.AppendEntriesRequest.Builder requestBuilder) {
+    private long packEntries(long nextIndex, AppendEntriesRequest.Builder requestBuilder) {
         long lastIndex = Math.min(raftLog.getLastLogIndex(),
                 nextIndex + raftOptions.getMaxLogEntriesPerRequest() - 1);
         for (long index = nextIndex; index <= lastIndex; index++) {
-            RaftProto.LogEntry entry = raftLog.getEntry(index);
+            LogEntry entry = raftLog.getEntry(index);
             requestBuilder.addEntries(entry);
         }
         return lastIndex - nextIndex + 1;
@@ -806,7 +834,7 @@ public class RaftNode {
             long lastOffset = 0;
             long lastLength = 0;
             while (!isLastRequest) {
-                RaftProto.InstallSnapshotRequest request
+                InstallSnapshotRequest request
                         = buildInstallSnapshotRequest(snapshotDataFileMap, lastFileName, lastOffset, lastLength);
                 if (request == null) {
                     LOG.warn("snapshot request == null");
@@ -819,9 +847,9 @@ public class RaftNode {
                 LOG.info("install snapshot request, fileName={}, offset={}, size={}, isFirst={}, isLast={}",
                         request.getFileName(), request.getOffset(), request.getData().toByteArray().length,
                         request.getIsFirst(), request.getIsLast());
-                RaftProto.InstallSnapshotResponse response
+                InstallSnapshotResponse response
                         = peer.getRaftConsensusServiceAsync().installSnapshot(request);
-                if (response != null && response.getResCode() == RaftProto.ResCode.RES_CODE_SUCCESS) {
+                if (response != null && response.getResCode() == ResCode.RES_CODE_SUCCESS) {
                     lastFileName = request.getFileName();
                     lastOffset = request.getOffset();
                     lastLength = request.getData().size();
@@ -856,10 +884,10 @@ public class RaftNode {
         return isSuccess;
     }
 
-    private RaftProto.InstallSnapshotRequest buildInstallSnapshotRequest(
+    private InstallSnapshotRequest buildInstallSnapshotRequest(
             TreeMap<String, Snapshot.SnapshotDataFile> snapshotDataFileMap,
             String lastFileName, long lastOffset, long lastLength) {
-        RaftProto.InstallSnapshotRequest.Builder requestBuilder = RaftProto.InstallSnapshotRequest.newBuilder();
+        InstallSnapshotRequest.Builder requestBuilder = InstallSnapshotRequest.newBuilder();
 
         snapshot.getLock().lock();
         try {
@@ -982,15 +1010,15 @@ public class RaftNode {
         return stateMachine;
     }
 
-    public RaftProto.Configuration getConfiguration() {
+    public Configuration getConfiguration() {
         return configuration;
     }
 
-    public void setConfiguration(RaftProto.Configuration configuration) {
+    public void setConfiguration(Configuration configuration) {
         this.configuration = configuration;
     }
 
-    public RaftProto.Server getLocalServer() {
+    public Server getLocalServer() {
         return localServer;
     }
 

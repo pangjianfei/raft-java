@@ -1,6 +1,7 @@
 package com.github.wenweihu86.raft.service;
 
 import com.github.wenweihu86.raft.proto.RaftProto;
+import com.github.wenweihu86.raft.proto.builder.*;
 
 /**
  * raft节点之间相互通信的接口。
@@ -8,11 +9,11 @@ import com.github.wenweihu86.raft.proto.RaftProto;
  */
 public interface RaftConsensusService {
 
-    RaftProto.VoteResponse preVote(RaftProto.VoteRequest request);
+    VoteResponse preVote(VoteRequest request);
 
-    RaftProto.VoteResponse requestVote(RaftProto.VoteRequest request);
+    VoteResponse requestVote(VoteRequest request);
 
-    RaftProto.AppendEntriesResponse appendEntries(RaftProto.AppendEntriesRequest request);
+    AppendEntriesResponse appendEntries(AppendEntriesRequest request);
 
-    RaftProto.InstallSnapshotResponse installSnapshot(RaftProto.InstallSnapshotRequest request);
+    InstallSnapshotResponse installSnapshot(InstallSnapshotRequest request);
 }
